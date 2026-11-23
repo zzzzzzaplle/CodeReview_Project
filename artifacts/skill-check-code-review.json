@@ -1,0 +1,29 @@
+{
+  "summary": {
+    "total": 83,
+    "eligible": 49,
+    "modelVisible": 49,
+    "commandVisible": 48,
+    "disabled": 0,
+    "blocked": 0,
+    "agentFiltered": 0,
+    "notInjected": 0,
+    "missingRequirements": 34
+  },
+  "codeReview": {
+    "eligible": [
+      "code-review"
+    ],
+    "modelVisible": [
+      "code-review"
+    ],
+    "commandVisible": [
+      "code-review"
+    ],
+    "disabled": [],
+    "blocked": [],
+    "agentFiltered": [],
+    "notInjected": [],
+    "missingRequirements": []
+  }
+}

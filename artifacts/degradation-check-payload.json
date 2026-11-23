@@ -1,0 +1,26 @@
+{
+  "commit_id": "cabb59b3b5fe870e5cb8c07df73f1e7700d464cc",
+  "event": "REQUEST_CHANGES",
+  "body": "## OpenClaw 自动代码审查报告\n\nDiff 行号映射与降级自测\n\n### 前置单测执行结果\n\n```text\nexit_code=1\n> test\n> node --test\n\n✔ 成功预订扣减库存 (0.484583ms)\n✖ 库存不足时拒绝预订且库存不变 (0.535917ms)\n✔ 数量为零时拒绝预订 (0.070166ms)\nℹ tests 3\nℹ suites 0\nℹ pass 2\nℹ fail 1\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 53.354834\n\n✖ failing tests:\n\ntest at test/inventory.test.js:11:1\n✖ 库存不足时拒绝预订且库存不变 (0.535917ms)\n  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n  \n  true !== false\n  \n      at TestContext.<anonymous> (file:///Users/macbookair/CodeReview_Project/demo/openclaw-workspace/review-case/test/inventory.test.js:13:10)\n      at Test.runInAsyncScope (node:async_hooks:226:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)\n      at Test.postRun (node:internal/test_runner/test:1542:19)\n      at Test.run (node:internal/test_runner/test:1467:12)\n      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {\n    generatedMessage: true,\n    code: 'ERR_ASSERTION',\n    actual: true,\n    expected: false,\n    operator: 'strictEqual',\n    diff: 'simple'\n  }\n```\n\n### 降级评论（行号不在本次 Diff Hunk 内，自动转为文件/汇总级评论）\n\n1. **[HIGH][Spec] 越界行号降级验证项**（位置：`src/inventory.js:999`，降级原因：`line_not_in_diff_hunk`）\n   - 说明：该行号超出 Unified Diff Hunk 范围，必须自动降级而非触发 422。\n   - 建议：在汇总区展示该条建议。",
+  "comments": [
+    {
+      "path": "src/inventory.js",
+      "line": 6,
+      "side": "RIGHT",
+      "body": "**[MEDIUM][Standards] 参数命名违反项目规范**\n\nreserve(q) 使用单字符参数名 q。\n\n**修改建议**：重命名为 quantity。"
+    }
+  ],
+  "_mapping_stats": {
+    "total_findings": 2,
+    "inline_count": 1,
+    "downgraded_count": 1,
+    "downgraded_details": [
+      {
+        "file": "src/inventory.js",
+        "line": 999,
+        "reason": "line_not_in_diff_hunk",
+        "title": "越界行号降级验证项"
+      }
+    ]
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "code-review",
+  "checkedAt": "2026-10-19T12:58:48.258Z",
+  "openclawVersion": "2026.10.5",
+  "requestedRef": "skills-sh:mattpocock/skills/code-review",
+  "listingUrl": "https://clawhub.ai/skills-sh/mattpocock/skills/code-review",
+  "repository": "https://github.com/mattpocock/skills",
+  "commit": "4588b32ecab9ecc9fc8cc6b6c5e7d675b6004b0d",
+  "repositoryPath": "skills/engineering/code-review",
+  "installedPath": "/Users/macbookair/CodeReview_Project/demo/openclaw-workspace/skills/code-review",
+  "method": "openclaw skills install <local-directory> --agent main",
+  "directInstallFailure": "ArchiveSecurityError: zip entry is a link: skills-4588b32ecab9ecc9fc8cc6b6c5e7d675b6004b0d/AGENTS.md",
+  "sha256": "47f4e52c21694def9c7c11cbfbf891ca35eac7a93e395797515be3c8a409ae50",
+  "clawhubManaged": false,
+  "reviewedFiles": [
+    "SKILL.md",
+    "agents/openai.yaml"
+  ]
+}

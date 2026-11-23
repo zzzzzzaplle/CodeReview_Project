@@ -11,3 +11,11 @@ desktop.ini
 
 # Logs
 *.log
+
+# Secrets & Python cache
+.env
+.env.*
+*.token
+__pycache__/
+*.pyc
+

@@ -1,0 +1,13 @@
+{
+  "commits": {
+    "cabb59b3b5fe870e5cb8c07df73f1e7700d464cc": {
+      "reviewed_at": "2026-11-23T14:52:20.704549+00:00",
+      "pr_number": 1,
+      "run_id": "0eb18f58-f9e0-4d6d-b1ea-c22103698514",
+      "main_session_id": "c95b63fa-1a6f-4635-9970-b4fdfe416d69",
+      "subagent_count": 2,
+      "inline_count": 4,
+      "downgraded_count": 0
+    }
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "commit_id": "cabb59b3b5fe870e5cb8c07df73f1e7700d464cc",
+  "event": "REQUEST_CHANGES",
+  "body": "## OpenClaw 自动代码审查报告\n\nPR #1 实现了 Inventory.reserve，但核心库存不足校验缺失，导致预审单测失败；同时违反 CODING_STANDARDS.md 的单字符参数命名规范。建议先补库存守卫与正整数校验并重命名参数后再合并。\n\n### 前置单测执行结果\n\n```text\nexit_code=1\n> test\n> node --test\n\n✔ 成功预订扣减库存 (0.67375ms)\n✖ 库存不足时拒绝预订且库存不变 (0.503958ms)\n✔ 数量为零时拒绝预订 (0.07075ms)\nℹ tests 3\nℹ suites 0\nℹ pass 2\nℹ fail 1\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 61.823292\n\n✖ failing tests:\n\ntest at test/inventory.test.js:11:1\n✖ 库存不足时拒绝预订且库存不变 (0.503958ms)\n  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n  \n  true !== false\n  \n      at TestContext.<anonymous> (file:///Users/macbookair/CodeReview_Project/demo/openclaw-workspace/review-case/test/inventory.test.js:13:10)\n      at Test.runInAsyncScope (node:async_hooks:226:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)\n      at Test.postRun (node:internal/test_runner/test:1542:19)\n      at Test.run (node:internal/test_runner/test:1467:12)\n      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {\n    generatedMessage: true,\n    code: 'ERR_ASSERTION',\n    actual: true,\n    expected: false,\n    operator: 'strictEqual',\n    diff: 'simple'\n  }\n```",
+  "comments": [
+    {
+      "path": "src/inventory.js",
+      "line": 6,
+      "side": "RIGHT",
+      "body": "**[HIGH][Standards] 公共方法参数使用单字符名 q，违反命名规范**\n\nCODING_STANDARDS.md 要求「公共方法参数须采用有明确语义的名称」，并明确「禁止使用 q、x 等含义不明的单字符参数名」。reserve(q) 由本 diff 新增，且 q 在第 7、8 行继续使用，属于硬性规范违规，而非主观 smell 判断。\n\n**修改建议**：将签名改为 reserve(quantity)，并同步修改第 7 行 if (quantity <= 0) 与第 8 行 this.stock -= quantity。"
+    },
+    {
+      "path": "src/inventory.js",
+      "line": 8,
+      "side": "RIGHT",
+      "body": "**[HIGH][Spec] 缺少库存充足性校验，库存不足时仍扣减并返回 true**\n\nspecs/inventory.md 需求 2 要求「只有剩余库存不少于预订数量时，预订才允许成功」，需求 3 要求「预订失败时，库存保持不变，返回 false」。当前实现无条件执行 this.stock -= q，库存不足时既不失败也不保留库存。预审 npm test 已失败：test/inventory.test.js:13 在 new Inventory(4) 后 reserve(5) 期望 false，实际 true。\n\n**修改建议**：在扣减前增加守卫：if (q > this.stock) return false;，确保失败路径不改动 this.stock。"
+    },
+    {
+      "path": "src/inventory.js",
+      "line": 7,
+      "side": "RIGHT",
+      "body": "**[MEDIUM][Spec] 仅校验 q <= 0，未保证预订数量为整数**\n\nspecs/inventory.md 需求 1 要求「预订数量必须为正整数」。第 7 行只排除零和负数，正小数（如 1.5）会通过并扣减出非整数库存，属于部分实现。\n\n**修改建议**：改为 if (!Number.isInteger(q) || q <= 0) return false;（重命名后使用 quantity）。"
+    },
+    {
+      "path": "src/inventory.js",
+      "line": 8,
+      "side": "RIGHT",
+      "body": "**[LOW][Standards] Primitive Obsession：库存以裸数字就地扣减**\n\nFowler smell 基线（主观判断）：this.stock 是裸 number 并被 this.stock -= q 原地修改，库存非负这一领域不变量无处表达，超量预订会静默产生负库存。CODING_STANDARDS.md 未强制此项，仓库规范不覆盖该 smell，故仅作可选项。\n\n**修改建议**：可选：引入 Quantity/StockLevel 值对象，或至少用带 stock >= quantity 校验的扣减方法封装该不变量；不应因此阻塞参数重命名。"
+    }
+  ],
+  "_mapping_stats": {
+    "total_findings": 4,
+    "inline_count": 4,
+    "downgraded_count": 0,
+    "downgraded_details": []
+  }
+}
