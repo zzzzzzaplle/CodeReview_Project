@@ -1,10 +1,11 @@
-"""End-to-end trigger and verification harness for the OpenClaw PR code review pipeline.
+"""
+OpenClaw PR 代码审查流水线的端到端触发与验证脚本。
 
-Runs 4 verification scenarios against the local webhook relay gateway:
-1. Valid HMAC-signed pull_request webhook -> OpenClaw isolated review + dual sub-agents + artifacts.
-2. Duplicate head_sha webhook -> idempotent skip without re-running the LLM.
-3. Invalid HMAC signature -> HTTP 401 rejection.
-4. Out-of-hunk line number -> automatic degradation to top-level PR summary body (prevents 422).
+针对本地 Webhook 中转网关依次执行 4 个验证场景：
+1. 合法 HMAC 签名的 pull_request Webhook -> OpenClaw 隔离会话审查 + 双子 Agent 派生 + 产物落盘。
+2. 重复 head_sha 的 Webhook -> 幂等跳过，不重复调用大模型。
+3. 非法 HMAC 签名 -> 返回 HTTP 401 拒绝。
+4. 超出 Diff Hunk 范围的行号 -> 自动降级至顶层 PR 汇总正文（避免 422 报错）。
 """
 
 from __future__ import annotations
@@ -98,7 +99,7 @@ def main() -> int:
     thread.start()
 
     try:
-        # Health check
+        # 健康检查
         with urllib.request.urlopen(f"{base_url}/health", timeout=5) as resp:
             assert resp.status == 200
 
@@ -157,19 +158,19 @@ def main() -> int:
             f"subagents={res1['subagent_count']}, spawn_calls={res1['sessions_spawn_count']}"
         )
 
-        # Scenario 2: Duplicate commit SHA idempotency check
+        # 场景 2：重复 Commit SHA 幂等性校验
         print(f"[Scenario 2] Re-sending duplicate commit {head_sha[:12]} ...")
         code2, res2 = _post_webhook(base_url, pr_payload, valid_sig, timeout=30)
         print("[Scenario 2] Response:", code2, json.dumps(res2, ensure_ascii=False))
         assert code2 == 200 and res2.get("status") == "skipped_duplicate_sha", f"Scenario 2 failed: {res2}"
 
-        # Scenario 3: Invalid HMAC signature rejection
+        # 场景 3：非法 HMAC 签名拦截
         print("[Scenario 3] Sending invalid HMAC signature ...")
         code3, res3 = _post_webhook(base_url, pr_payload, "sha256=" + "0" * 64, timeout=15)
         print("[Scenario 3] Response:", code3, json.dumps(res3, ensure_ascii=False))
         assert code3 == 401 and res3.get("error") == "invalid_hmac_signature", f"Scenario 3 failed: {res3}"
 
-        # Scenario 4: Out-of-hunk line degradation check against real repo diff
+        # 场景 4：基于真实仓库 Diff 验证越界行号自动降级
         print("[Scenario 4] Verifying out-of-hunk line degradation (line 999 -> PR summary body) ...")
         injected_findings = [
             {

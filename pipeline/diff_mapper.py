@@ -1,8 +1,8 @@
-"""Unified Diff hunk parser and GitHub PR Review comment mapper.
+"""Unified Diff Hunk 解析器与 GitHub PR Review 评论行号映射器。
 
-Computes valid RIGHT-side line numbers from Unified Diff output so inline review
-comments never hit GitHub 422 validation errors due to out-of-hunk line numbers.
-Out-of-range findings are automatically downgraded into the top-level review body.
+基于 Unified Diff 输出计算合法的 RIGHT（新文件）侧行号集合，避免行内审查评论
+因行号超出 Hunk 范围而触发 GitHub 422 校验错误。
+超出范围的审查发现会自动降级到顶层 PR Review 汇总正文中。
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ _HUNK_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 
 
 def parse_unified_diff(diff_text: str) -> dict[str, set[int]]:
-    """Parse Unified Diff text and return valid RIGHT-side line numbers per file."""
+    """解析 Unified Diff 文本，返回每个文件合法的 RIGHT（新文件）侧行号集合。"""
     valid_lines: dict[str, set[int]] = {}
     current_file: str | None = None
     in_hunk = False
@@ -52,7 +52,7 @@ def parse_unified_diff(diff_text: str) -> dict[str, set[int]]:
             continue
 
         if raw_line.startswith("\\"):
-            # "\ No newline at end of file" marker does not advance line numbers.
+            # "\ No newline at end of file" 标记不推进新文件行号。
             continue
 
         if raw_line.startswith("+"):
@@ -62,7 +62,7 @@ def parse_unified_diff(diff_text: str) -> dict[str, set[int]]:
             valid_lines[current_file].add(new_line_no)
             new_line_no += 1
         elif raw_line.startswith("-"):
-            # Deleted lines belong to the LEFT side; RIGHT-side line counter stays unchanged.
+            # 删除行属于 LEFT（旧文件）侧，RIGHT（新文件）侧行号计数器保持不变。
             continue
         else:
             in_hunk = False
@@ -92,18 +92,18 @@ def build_github_review_payload(
     valid_lines_by_file: dict[str, set[int]],
     test_summary: str = "",
 ) -> dict[str, Any]:
-    """Build a GitHub PR Review API payload with automatic line-number degradation.
+    """构建支持行号自动降级的 GitHub PR Review API 请求体。
 
     Args:
-        commit_id: Head commit SHA being reviewed.
-        summary: High-level summary text for the PR review body.
-        findings: Structured findings with axis, file, line, severity, title, body, suggestion.
-        valid_lines_by_file: Output of ``parse_unified_diff``.
-        test_summary: Optional pre-review unit test/lint execution summary.
+        commit_id: 本次审查目标的 Head Commit SHA。
+        summary: PR Review 顶层汇总正文摘要。
+        findings: 结构化审查发现列表，包含 axis、file、line、severity、title、body、suggestion 字段。
+        valid_lines_by_file: ``parse_unified_diff`` 返回的各文件合法行号映射。
+        test_summary: 可选的前置单元测试/代码检查执行摘要。
 
     Returns:
-        Dict matching GitHub ``POST /repos/{owner}/{repo}/pulls/{pull_number}/reviews``
-        plus a ``_mapping_stats`` metadata block for local verification.
+        符合 GitHub ``POST /repos/{owner}/{repo}/pulls/{pull_number}/reviews`` 接口规范的字典，
+        并附加 ``_mapping_stats`` 元数据字段用于本地验证。
     """
     inline_comments: list[dict[str, Any]] = []
     downgraded_findings: list[dict[str, Any]] = []

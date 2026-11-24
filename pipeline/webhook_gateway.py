@@ -1,13 +1,13 @@
-"""Local GitHub Webhook relay gateway for OpenClaw automated code review.
+"""OpenClaw 自动代码审查本地 GitHub Webhook 中转网关。
 
-Handles:
-1. GitHub HMAC-SHA256 webhook signature verification (X-Hub-Signature-256).
-2. Event filtering (pull_request: opened / synchronize / reopened).
-3. Commit SHA idempotency deduplication (artifacts/reviewed_commits.json).
-4. Git context acquisition + pre-review unit test execution (npm test).
-5. Forwarding to OpenClaw Inbound Hook (POST /hooks/agent, isolated session).
-6. Extracting main + sub-agent transcripts from OpenClaw SQLite databases.
-7. Unified Diff hunk line validation / degradation and artifact persistence.
+核心职责：
+1. GitHub Webhook HMAC-SHA256 签名验签（X-Hub-Signature-256）。
+2. 事件过滤（仅处理 pull_request 的 opened / synchronize / reopened 动作）。
+3. 基于 Commit SHA 的幂等去重（artifacts/reviewed_commits.json）。
+4. 采集 Git 上下文并执行前置单元测试（npm test）。
+5. 转发请求至 OpenClaw Inbound Hook（POST /hooks/agent，隔离会话模式）。
+6. 从 OpenClaw SQLite 数据库提取主会话与子 Agent 会话的执行记录。
+7. 执行 Unified Diff Hunk 行号校验/自动降级并持久化审查产物。
 """
 
 from __future__ import annotations
@@ -68,7 +68,7 @@ def load_openclaw_hook_config() -> tuple[str, str]:
     hook_url = f"http://127.0.0.1:{port}{base_path}/agent"
     return hook_url, token
 
-
+#核对门禁密码，防骗子
 def verify_github_signature(raw_body: bytes, signature_header: str | None, secret: str) -> bool:
     if not signature_header or not signature_header.startswith("sha256="):
         return False
@@ -289,9 +289,9 @@ def _extract_session_transcript(conn: sqlite3.Connection, session_id: str) -> di
         "errors": errors,
     }
 
-
+#从 OpenClaw SQLite 数据库提取主会话与子 Agent 会话的执行记录
 def collect_openclaw_run_evidence(hook_name: str, min_created_at_ms: int) -> dict[str, Any]:
-    """Locate the isolated webhook session and all spawned sub-agent sessions in SQLite."""
+    """从 SQLite 中定位本次隔离 Webhook 主会话及其派生的所有子 Agent 会话。"""
     agent_conn = sqlite3.connect(f"file:{AGENT_SQLITE_PATH}?mode=ro", uri=True)
     state_conn = sqlite3.connect(f"file:{STATE_SQLITE_PATH}?mode=ro", uri=True)
     try:
@@ -338,7 +338,7 @@ def collect_openclaw_run_evidence(hook_name: str, min_created_at_ms: int) -> dic
         key_candidates = list({main_session_key, base_session_key})
         placeholders = ",".join("?" for _ in key_candidates)
 
-        # Locate child sub-agent runs from state DB and agent DB.
+        # 从 state 数据库和 agent 数据库中定位派生的子 Agent 运行记录。
         subagent_rows = state_conn.execute(
             f"""
             SELECT run_id, child_session_key, controller_session_key, requester_session_key, created_at, payload_json
@@ -387,7 +387,7 @@ def collect_openclaw_run_evidence(hook_name: str, min_created_at_ms: int) -> dic
                 }
             )
 
-        # Fill missing session_id for child keys found only in subagent_runs.
+        # 为仅在 subagent_runs 表中查到的子会话补全缺失的 session_id 信息。
         for c_key, entry in child_keys_seen.items():
             if "session_id" not in entry:
                 w = agent_conn.execute(
@@ -453,12 +453,12 @@ def collect_openclaw_run_evidence(hook_name: str, min_created_at_ms: int) -> dic
 
 
 def parse_structured_findings(reply_text: str) -> tuple[str, list[dict[str, Any]]]:
-    """Extract structured JSON summary & findings from OpenClaw final reply."""
+    """从 OpenClaw 最终回复中提取结构化 JSON 摘要与审查发现列表。"""
     fenced_blocks = re.findall(r"```json\s*(\{.*?\})\s*```", reply_text, flags=re.DOTALL)
     candidates = list(reversed(fenced_blocks))
 
     if not candidates:
-        # Fallback: find any JSON object containing "findings"
+        # 回退策略：匹配包含 "findings" 字段的任意 JSON 对象
         brace_matches = re.findall(r"(\{[^{}]*\"findings\"\s*:\s*\[.*?\]\s*\})", reply_text, flags=re.DOTALL)
         candidates.extend(reversed(brace_matches))
 
@@ -472,7 +472,7 @@ def parse_structured_findings(reply_text: str) -> tuple[str, list[dict[str, Any]
         except json.JSONDecodeError:
             continue
 
-    # Heuristic fallback if model did not emit valid JSON block
+    # 启发式回退：当模型未输出合法 JSON 代码块时，从文本中提取关键发现
     fallback_findings: list[dict[str, Any]] = []
     if re.search(r"\bq\b", reply_text) and ("CODING_STANDARDS" in reply_text or "Standards" in reply_text):
         fallback_findings.append(
@@ -619,7 +619,7 @@ def process_pull_request_event(payload: dict[str, Any]) -> tuple[int, dict[str, 
     repo_ctx = collect_repo_context(repo_path, base_ref, head_ref)
     head_sha = str((pr.get("head") or {}).get("sha") or repo_ctx["head_sha"])
 
-    # Pitfall 1: Commit SHA idempotency check
+    # 避坑点 1：基于 Commit SHA 的幂等去重校验
     reviewed_commits = load_reviewed_commits(PRIMARY_ARTIFACTS_DIR)
     force_rerun = bool(payload.get("force_rerun"))
     if head_sha in reviewed_commits["commits"] and not force_rerun:
@@ -652,7 +652,7 @@ def process_pull_request_event(payload: dict[str, Any]) -> tuple[int, dict[str, 
     if completion.get("status") != "ok":
         raise RuntimeError(f"OpenClaw hook completion failed: {json.dumps(hook_resp)}")
 
-    # Poll briefly in case SQLite WAL commits right after HTTP response
+    # 短暂轮询，防止 HTTP 响应返回后 SQLite WAL 尚未落盘
     evidence = None
     last_err: Exception | None = None
     for _ in range(10):
@@ -667,7 +667,7 @@ def process_pull_request_event(payload: dict[str, Any]) -> tuple[int, dict[str, 
 
     summary, findings = parse_structured_findings(evidence.get("raw_final_reply", ""))
 
-    # Optional injected findings for testing out-of-hunk line degradation (Scenario 4)
+    # 可选的测试注入发现项，用于验证越界行号自动降级（场景 4）
     extra_findings = payload.get("inject_test_findings")
     if isinstance(extra_findings, list):
         findings.extend(item for item in extra_findings if isinstance(item, dict))
@@ -719,7 +719,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
     server_version = "OpenClawPRWebhookRelay/1.0"
 
     def log_message(self, format: str, *args: Any) -> None:
-        # Suppress noisy default stderr HTTP logs during test assertions.
+        # 屏蔽默认的 stderr HTTP 访问日志，避免干扰测试断言输出。
         return
 
     def _send_json(self, status_code: int, body: dict[str, Any]) -> None:
@@ -735,7 +735,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
             self._send_json(200, {"ok": True, "service": "webhook_gateway"})
             return
         self._send_json(404, {"ok": False, "error": "not_found"})
-
+    # 收到github event请求,进行处理请求
     def do_POST(self) -> None:
         if self.path != "/webhook/github":
             self._send_json(404, {"ok": False, "error": "not_found"})

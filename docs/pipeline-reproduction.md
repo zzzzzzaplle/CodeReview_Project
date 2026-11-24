@@ -26,7 +26,7 @@ pipeline/webhook_gateway.py（本地中转网关）
 
 1. 子 Agent 并发与深度限制：
    - `agents.defaults.subagents.maxConcurrent = 2`
-   - `agents.defaults.subagents.maxSpawnDepth = 1`
+   - `agents.defaults.subagents.maxSpawnDepth = 1` //只允许父生子agent 禁止子生孙
 2. Inbound HTTP Hooks 配置（`~/.openclaw/openclaw.json`，实际 Token 保存在本机配置中，未提交至仓库）：
    - `hooks.enabled = true`
    - `hooks.path = "/hooks"`
@@ -44,9 +44,9 @@ pipeline/webhook_gateway.py（本地中转网关）
     1. 公共方法 `reserve(q)` 使用单字符参数名 `q`，违反 `CODING_STANDARDS.md`。
     2. 缺少 `q > this.stock` 检查，直接扣减库存并返回 `true`，导致单测 `库存不足时拒绝预订且库存不变` 失败。
 - 本地链路脚本（位于仓库 `pipeline/`）：
-  - [diff_mapper.py](file:///Users/macbookair/Desktop/CodeBase/CodeReview_Project/pipeline/diff_mapper.py)：解析 Unified Diff Hunk，计算 `RIGHT` 侧有效行号集合并执行越界降级。
-  - [webhook_gateway.py](file:///Users/macbookair/Desktop/CodeBase/CodeReview_Project/pipeline/webhook_gateway.py)：本地 HTTP 中转网关，承担 HMAC 验签、SHA 幂等、Git 取数、前置单测、调用 `/hooks/agent`、读取 SQLite 轨迹（兼容 `event_json` 与 Zstandard 压缩的 `event_zstd`）及生成回写文件。
-  - [trigger_pr_event.py](file:///Users/macbookair/Desktop/CodeBase/CodeReview_Project/pipeline/trigger_pr_event.py)：自动化触发并验收 4 个测试场景。
+  - [diff_mapper.py]：解析 Unified Diff Hunk，计算 `RIGHT` 侧有效行号集合并执行越界降级。
+  - [webhook_gateway.py]：本地 HTTP 中转网关，承担 HMAC 验签、SHA 幂等、Git 取数、前置单测、调用 `/hooks/agent`、读取 SQLite 轨迹（兼容 `event_json` 与 Zstandard 压缩的 `event_zstd`）及生成回写文件。
+  - [trigger_pr_event.py]：自动化触发并验收 4 个测试场景。
 
 ## 4. 四项实测验收结果
 
@@ -69,11 +69,11 @@ pipeline/webhook_gateway.py（本地中转网关）
 
 产物保存在 `artifacts/`（并同步至 `/Users/macbookair/CodeReview_Project/artifacts/`）：
 
-- [github-pr-review-payload.json](file:///Users/macbookair/Desktop/CodeBase/CodeReview_Project/artifacts/github-pr-review-payload.json)：符合 GitHub PR Reviews API 结构的最终回写 JSON（`event: REQUEST_CHANGES`，4 条行内评论全部命中 Hunk）。
-- [review-report.md](file:///Users/macbookair/Desktop/CodeBase/CodeReview_Project/artifacts/review-report.md)：完整 Markdown 审查报告（含前置单测结果、双维度审查文本及子 Agent 摘要）。
-- [subagent-evidence.json](file:///Users/macbookair/Desktop/CodeBase/CodeReview_Project/artifacts/subagent-evidence.json)：OpenClaw 主会话与 `subagent_runs` 轨迹取证记录。
-- [reviewed_commits.json](file:///Users/macbookair/Desktop/CodeBase/CodeReview_Project/artifacts/reviewed_commits.json)：已审查 Commit SHA 幂等状态记录。
-- [degradation-check-payload.json](file:///Users/macbookair/Desktop/CodeBase/CodeReview_Project/artifacts/degradation-check-payload.json)：场景 4 越界行号自动降级输出验证样本。
+- [github-pr-review-payload.json]：符合 GitHub PR Reviews API 结构的最终回写 JSON（`event: REQUEST_CHANGES`，4 条行内评论全部命中 Hunk）。
+- [review-report.md]：完整 Markdown 审查报告（含前置单测结果、双维度审查文本及子 Agent 摘要）。
+- [subagent-evidence.json]：OpenClaw 主会话与 `subagent_runs` 轨迹取证记录。
+- [reviewed_commits.json]：已审查 Commit SHA 幂等状态记录。
+- [degradation-check-payload.json]：场景 4 越界行号自动降级输出验证样本。
 
 ## 6. 复现命令
 
@@ -82,8 +82,8 @@ python3 pipeline/diff_mapper.py
 python3 pipeline/trigger_pr_event.py
 ```
 
-如需单独常驻启动本地网关接收外部 Webhook：
-
+<!-- 如需把中转网关当成一个一直开着的后台小服务，随时等待别人发代码审查请求过来。 -->
+<!-- 指定握手密钥SECRET,开放gateway_port:GATEWAY_PORT=8765 -->
 ```bash
 WEBHOOK_SECRET="local_demo_webhook_secret_2026" GATEWAY_PORT=8765 python3 pipeline/webhook_gateway.py
 ```
