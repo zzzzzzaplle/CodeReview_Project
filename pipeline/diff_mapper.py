@@ -16,9 +16,8 @@ _HUNK_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 def parse_unified_diff(diff_text: str) -> dict[str, set[int]]:
     """解析 Unified Diff 文本，返回每个文件合法的 RIGHT（新文件）侧行号集合。"""
     valid_lines: dict[str, set[int]] = {}
-    current_file: str | None = None
-    in_hunk = False
-    new_line_no = 0
+    current_file: str | None = None #我现在在数那个文件 #是否进入到@@改动块
+    new_line_no = 0 #现在是第几行?
 
     for raw_line in diff_text.splitlines():
         if raw_line.startswith("diff --git "):
@@ -26,10 +25,10 @@ def parse_unified_diff(diff_text: str) -> dict[str, set[int]]:
             in_hunk = False
             continue
 
-        if raw_line.startswith("+++ "):
+        if raw_line.startswith("+++ "): # ++ 就是新文件
             target = raw_line[4:].strip()
-            if target == "/dev/null":
-                current_file = None
+            if target == "/dev/null":  #表示旧文件被删除
+                current_file = None 
             elif target.startswith("b/"):
                 current_file = target[2:]
                 valid_lines.setdefault(current_file, set())
@@ -127,7 +126,7 @@ def build_github_review_payload(
                     "body": _format_inline_body(item),
                 }
             )
-        else:
+        else: #没通过检查的汇总区
             if not isinstance(file_path, str) or file_path not in valid_lines_by_file:
                 reason = "file_not_in_diff"
             elif not is_valid_int:

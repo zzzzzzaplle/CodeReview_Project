@@ -61,7 +61,7 @@ def load_openclaw_hook_config() -> tuple[str, str]:
     if not hooks.get("enabled"):
         raise RuntimeError("OpenClaw hooks.enabled is not true in ~/.openclaw/openclaw.json")
     token = hooks.get("token")
-    if not token or not isinstance(token, str):
+    if not token or not isinstance(token, str): #这里的token是从本机读取的
         raise RuntimeError("OpenClaw hooks.token is missing in ~/.openclaw/openclaw.json")
     base_path = str(hooks.get("path") or "/hooks").rstrip("/")
     port = int(cfg.get("gateway", {}).get("port") or 18789)
@@ -195,13 +195,13 @@ def call_openclaw_hook(
     timeout_seconds: int = 240,
 ) -> dict[str, Any]:
     payload = {
-        "message": message,
-        "name": hook_name,
-        "agentId": "main",
-        "sessionMode": "isolated",
-        "waitForCompletion": True,
-        "deliver": False,
-        "timeoutSeconds": timeout_seconds,
+        "message": message,              # 刚才写好的任务书
+        "name": hook_name,               # 刚才贴的“姓名贴”
+        "agentId": "main",               # 派给主 Agent
+        "sessionMode": "isolated",       # 开全新独立小房间，不串台
+        "waitForCompletion": True,       # 死等它全干完再挂电话！
+        "deliver": False,                # 别自动往聊天群发通知，结果我自己收
+        "timeoutSeconds": timeout_seconds, # 给 AI 最多 240 秒（4 分钟）干活
     }
     req = urllib.request.Request(
         hook_url,
@@ -223,15 +223,15 @@ def call_openclaw_hook(
 
 def _decode_transcript_row(event_json: str | None, event_zstd: bytes | None) -> dict[str, Any] | None:
     raw: str | None = None
-    if event_json:
+    if event_json: #OpenClaw 短的聊天记录直接存纯文字
         raw = event_json
-    elif event_zstd:
+    elif event_zstd: #长记录会塞进 Zstandard 真空压缩袋
         dctx = zstandard.ZstdDecompressor()
         raw = dctx.decompress(event_zstd).decode("utf-8")
     if not raw:
         return None
     try:
-        return json.loads(raw)
+        return json.loads(raw) #json.loads 变回 Python 字典
     except json.JSONDecodeError:
         return None
 
@@ -239,11 +239,11 @@ def _decode_transcript_row(event_json: str | None, event_zstd: bytes | None) -> 
 def _extract_session_transcript(conn: sqlite3.Connection, session_id: str) -> dict[str, Any]:
     rows = conn.execute(
         "SELECT seq, event_json, event_zstd FROM transcript_events WHERE session_id=? ORDER BY seq",
-        (session_id,),
+        (session_id,),#从SQLite文件里面抓出来
     ).fetchall()
 
-    tool_calls: list[dict[str, Any]] = []
-    assistant_texts: list[str] = []
+    tool_calls: list[dict[str, Any]] = [] #记录ai动了那些工具
+    assistant_texts: list[str] = [] #ai说的话
     usage_total: dict[str, Any] = {}
     errors: list[str] = []
 
@@ -252,7 +252,7 @@ def _extract_session_transcript(conn: sqlite3.Connection, session_id: str) -> di
         if not evt or evt.get("type") != "message":
             continue
         msg = evt.get("message") or {}
-        if msg.get("role") != "assistant":
+        if msg.get("role") != "assistant": #筛选role为ai的发言
             continue
         if msg.get("errorMessage"):
             errors.append(str(msg.get("errorMessage")))
@@ -292,10 +292,10 @@ def _extract_session_transcript(conn: sqlite3.Connection, session_id: str) -> di
 #从 OpenClaw SQLite 数据库提取主会话与子 Agent 会话的执行记录
 def collect_openclaw_run_evidence(hook_name: str, min_created_at_ms: int) -> dict[str, Any]:
     """从 SQLite 中定位本次隔离 Webhook 主会话及其派生的所有子 Agent 会话。"""
-    agent_conn = sqlite3.connect(f"file:{AGENT_SQLITE_PATH}?mode=ro", uri=True)
-    state_conn = sqlite3.connect(f"file:{STATE_SQLITE_PATH}?mode=ro", uri=True)
+    agent_conn = sqlite3.connect(f"file:{AGENT_SQLITE_PATH}?mode=ro", uri=True) #mode=ro是read only模式,文件里面有会话窗口+事件
+    state_conn = sqlite3.connect(f"file:{STATE_SQLITE_PATH}?mode=ro", uri=True)#平台级状态 含subagent的运行记录
     try:
-        candidates = agent_conn.execute(
+        candidates = agent_conn.execute( #先在agent库里面找那个是本次 webhook的主会话
             """
             SELECT session_id, session_key, status, model_provider, model, started_at, ended_at
             FROM session_windows
@@ -309,7 +309,7 @@ def collect_openclaw_run_evidence(hook_name: str, min_created_at_ms: int) -> dic
 
         matched_window = None
         main_transcript: dict[str, Any] | None = None
-        marker = f"Task: {hook_name}"
+        marker = f"Task: {hook_name}" #这里用于匹配hook name
 
         for row in candidates:
             sid = row[0]
@@ -339,7 +339,7 @@ def collect_openclaw_run_evidence(hook_name: str, min_created_at_ms: int) -> dic
         placeholders = ",".join("?" for _ in key_candidates)
 
         # 从 state 数据库和 agent 数据库中定位派生的子 Agent 运行记录。
-        subagent_rows = state_conn.execute(
+        subagent_rows = state_conn.execute( #state里面记录的是“谁让谁做事情”
             f"""
             SELECT run_id, child_session_key, controller_session_key, requester_session_key, created_at, payload_json
             FROM subagent_runs
@@ -604,7 +604,7 @@ def render_review_report_md(
 
 def process_pull_request_event(payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
     action = payload.get("action")
-    if action not in {"opened", "synchronize", "reopened"}:
+    if action not in {"opened", "synchronize", "reopened"}: 
         return 200, {"ok": True, "status": "ignored_action", "action": action}
 
     pr = payload.get("pull_request") or {}
@@ -613,10 +613,11 @@ def process_pull_request_event(payload: dict[str, Any]) -> tuple[int, dict[str, 
     pr_body = str(pr.get("body") or "")
     base_ref = str((pr.get("base") or {}).get("ref") or "HEAD~1")
     head_ref = str((pr.get("head") or {}).get("ref") or "HEAD")
+    #这一段上面疯狂get实际上是校验每一个字段方便补充默认值
 
     repo_path_str = (payload.get("repository") or {}).get("local_path") or str(DEFAULT_REPO_PATH)
     repo_path = pathlib.Path(repo_path_str).resolve()
-    repo_ctx = collect_repo_context(repo_path, base_ref, head_ref)
+    repo_ctx = collect_repo_context(repo_path, base_ref, head_ref) #前置校验 查验仓库,查验版本,查验git log,diff.....并跑一遍npm test
     head_sha = str((pr.get("head") or {}).get("sha") or repo_ctx["head_sha"])
 
     # 避坑点 1：基于 Commit SHA 的幂等去重校验
@@ -631,24 +632,24 @@ def process_pull_request_event(payload: dict[str, Any]) -> tuple[int, dict[str, 
         }
 
     try:
-        repo_rel_path = "./" + str(repo_path.relative_to(DEFAULT_WORKSPACE))
-    except ValueError:
+        repo_rel_path = "./" + str(repo_path.relative_to(DEFAULT_WORKSPACE)) 
+    except ValueError: #把工作路径环换成OpenClaw的DEFAULT_WORKSPACE,万一用这个相对路径寻找失败,触发 ValueError,就还是用绝对路径
         repo_rel_path = str(repo_path)
 
-    hook_url, hook_token = load_openclaw_hook_config()
-    hook_name = f"PRReview-{pr_number}-{head_sha[:8]}-{int(time.time())}"
+    hook_url, hook_token = load_openclaw_hook_config() #加载openclaw的webhook配置
+    hook_name = f"PRReview-{pr_number}-{head_sha[:8]}-{int(time.time())}" #起了一个名字 这个名字是用pr_num+sha+time拼起来的
     prompt = build_review_prompt(repo_rel_path, pr_number, pr_title, pr_body, repo_ctx)
 
     start_ms = int(time.time() * 1000)
-    hook_resp = call_openclaw_hook(
+    hook_resp = call_openclaw_hook( #唤醒openclaw
         hook_url=hook_url,
         hook_token=hook_token,
-        hook_name=hook_name,
-        message=prompt,
-        idempotency_key=f"pr-{pr_number}-{head_sha[:12]}-{start_ms}",
+        hook_name=hook_name, #传入hook_name
+        message=prompt,#刚用build_review_prompt得到的提示词
+        idempotency_key=f"pr-{pr_number}-{head_sha[:12]}-{start_ms}",#靠这个识别本次对话
     )
 
-    completion = hook_resp.get("completion") or {}
+    completion = hook_resp.get("completion") or {} #干完活会回复completion
     if completion.get("status") != "ok":
         raise RuntimeError(f"OpenClaw hook completion failed: {json.dumps(hook_resp)}")
 
@@ -657,7 +658,7 @@ def process_pull_request_event(payload: dict[str, Any]) -> tuple[int, dict[str, 
     last_err: Exception | None = None
     for _ in range(10):
         try:
-            evidence = collect_openclaw_run_evidence(hook_name, start_ms)
+            evidence = collect_openclaw_run_evidence(hook_name, start_ms)#收集openclaw实际运行的证据,他的数据库是SQLite WAL模式
             break
         except Exception as exc:
             last_err = exc
@@ -680,7 +681,7 @@ def process_pull_request_event(payload: dict[str, Any]) -> tuple[int, dict[str, 
         valid_lines_by_file=valid_lines,
         test_summary=repo_ctx["test_summary"],
     )
-
+    #登记已经审查
     reviewed_commits["commits"][head_sha] = {
         "reviewed_at": datetime.now(timezone.utc).isoformat(),
         "pr_number": pr_number,
@@ -691,7 +692,7 @@ def process_pull_request_event(payload: dict[str, Any]) -> tuple[int, dict[str, 
         "downgraded_count": review_payload["_mapping_stats"]["downgraded_count"],
     }
 
-    report_md = render_review_report_md(
+    report_md = render_review_report_md(#中文report markdown
         pr_number=pr_number,
         pr_title=pr_title,
         repo_ctx=repo_ctx,
@@ -730,30 +731,31 @@ class WebhookHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(raw)
 
-    def do_GET(self) -> None:
+    def do_GET(self) -> None: #打招呼
         if self.path == "/health":
             self._send_json(200, {"ok": True, "service": "webhook_gateway"})
             return
         self._send_json(404, {"ok": False, "error": "not_found"})
     # 收到github event请求,进行处理请求
-    def do_POST(self) -> None:
+    def do_POST(self) -> None: #接受post请求
         if self.path != "/webhook/github":
-            self._send_json(404, {"ok": False, "error": "not_found"})
+            self._send_json(404, {"ok": False, "error": "not_found"}) #安检1. 是否是寄到webhook/github这个窗口
             return
 
-        content_length = int(self.headers.get("Content-Length") or "0")
+        content_length = int(self.headers.get("Content-Length") or "0")#安检2.看包裹有多重
         raw_body = self.rfile.read(content_length)
 
         sig = self.headers.get("X-Hub-Signature-256")
-        if not verify_github_signature(raw_body, sig, get_webhook_secret()):
+        if not verify_github_signature(raw_body, sig, get_webhook_secret()): #安检3.拿到raw result 来验证
             self._send_json(401, {"ok": False, "error": "invalid_hmac_signature"})
             return
 
         event_type = self.headers.get("X-GitHub-Event")
-        if event_type != "pull_request":
+        if event_type != "pull_request":  #4.是否是PR?
             self._send_json(200, {"ok": True, "status": "ignored_event", "event": event_type})
             return
 
+        #5.加载数据 交给process_pull_request_event(payload)处理
         try:
             payload = json.loads(raw_body.decode("utf-8"))
         except json.JSONDecodeError:

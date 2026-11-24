@@ -43,27 +43,27 @@ def _sign(body: bytes, secret: str) -> str:
 
 def _post_webhook(
     base_url: str,
-    payload: dict[str, Any],
-    signature: str,
-    event: str = "pull_request",
+    payload: dict[str, Any], #假的github通知
+    signature: str, #已经算好的HMAC签名
+    event: str = "pull_request", #事件类型
     timeout: int = 300,
-) -> tuple[int, dict[str, Any]]:
+) -> tuple[int, dict[str, Any]]: #返回状态码——响应字典
     raw = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
         f"{base_url}/webhook/github",
         data=raw,
         headers={
-            "Content-Type": "application/json",
-            "X-GitHub-Event": event,
-            "X-Hub-Signature-256": signature,
+            "Content-Type": "application/json", #告诉网关按照json解析
+            "X-GitHub-Event": event, #github标准头说明这是哪类事件,真实github也发这个
+            "X-Hub-Signature-256": signature, #github 标准签名头
         },
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return resp.status, json.loads(resp.read().decode("utf-8"))
+        with urllib.request.urlopen(req, timeout=timeout) as resp: #发出
+            return resp.status, json.loads(resp.read().decode("utf-8")) #正确就返回200
     except urllib.error.HTTPError as exc:
-        return exc.code, json.loads(exc.read().decode("utf-8"))
+        return exc.code, json.loads(exc.read().decode("utf-8")) #错误就返回401
 
 
 def _get_sha(repo: pathlib.Path, ref: str) -> str:
@@ -77,40 +77,40 @@ def _get_sha(repo: pathlib.Path, ref: str) -> str:
     return res.stdout.strip()
 
 
-def _reset_idempotency_state() -> None:
-    for d in (PRIMARY_ARTIFACTS_DIR, MIRROR_ARTIFACTS_DIR):
-        p = d / "reviewed_commits.json"
-        if p.exists():
-            p.unlink()
+def _reset_idempotency_state() -> None:  #排除已经审查过的
+    for d in (PRIMARY_ARTIFACTS_DIR, MIRROR_ARTIFACTS_DIR): #主目录+镜像目录。d是文件夹
+        p = d / "reviewed_commits.json"                     #reviewedxxx.json记录那些commit已经审查过
+        if p.exists():                                      #如果存在就删除 
+            p.unlink()                                      #删除文件
 
 
 def main() -> int:
     _reset_idempotency_state()
 
     repo = DEFAULT_REPO_PATH
-    base_sha = _get_sha(repo, "HEAD~1")
-    head_sha = _get_sha(repo, "HEAD")
-    secret = get_webhook_secret()
+    base_sha = _get_sha(repo, "HEAD~1") #HEAD ~1 就是上一次的版本
+    head_sha = _get_sha(repo, "HEAD") #现在的版本
+    secret = get_webhook_secret() #双方握手暗号
 
-    server = create_server("127.0.0.1", 0)
-    port = server.server_address[1]
+    server = create_server("127.0.0.1", 0) #这里设置为0(不容易遇到端口占用问题),是建立一个服务器 等别人敲门
+    port = server.server_address[1] #端口是系统分配的,这里需要问一下服务器要回来
     base_url = f"http://127.0.0.1:{port}"
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
+    thread = threading.Thread(target=server.serve_forever, daemon=True) #daemon 守护线程,等程序结束 他也死亡
+    thread.start() #serve_forever 是一个死循环,把这个死循环丢到另一个thread去跑
 
     try:
         # 健康检查
-        with urllib.request.urlopen(f"{base_url}/health", timeout=5) as resp:
+        with urllib.request.urlopen(f"{base_url}/health", timeout=5) as resp: #发送get请求,服务器返回后得到响应对象叫resp
             assert resp.status == 200
 
-        pr_payload = {
+        pr_payload = { #这段在伪造一个github webhook请求体,手抄一份假的github通知 payload就是载荷,记录谁,在那个仓库,那个pr,干了什么的一坨json
             "action": "opened",
             "number": 1,
             "repository": {
                 "full_name": "demo/review-case",
-                "local_path": str(repo),
+                "local_path": str(repo), #告诉网关仓库在本地的哪里
             },
-            "pull_request": {
+            "pull_request": { #(标题,描述,base,head的版本与SHA)
                 "number": 1,
                 "title": "feat: implement inventory reservation",
                 "body": "Implement Inventory.reserve according to specs/inventory.md and CODING_STANDARDS.md.",
@@ -118,11 +118,11 @@ def main() -> int:
                 "head": {"ref": "HEAD", "sha": head_sha},
             },
         }
-        raw_pr = json.dumps(pr_payload).encode("utf-8")
-        valid_sig = _sign(raw_pr, secret)
+        raw_pr = json.dumps(pr_payload).encode("utf-8") #json就是把python字段变成一段json文字
+        valid_sig = _sign(raw_pr, secret) #用 hmac 把字节和暗号搅在一起，算出一串 "sha256=..."
 
         print(f"[Scenario 1] Sending signed PR webhook for commit {head_sha[:12]} to {base_url}/webhook/github ...")
-        code1, res1 = _post_webhook(base_url, pr_payload, valid_sig, timeout=300)
+        code1, res1 = _post_webhook(base_url, pr_payload, valid_sig, timeout=300)#把信寄出去
         print("[Scenario 1] Response:", code1, json.dumps(res1, ensure_ascii=False))
         assert code1 == 200 and res1.get("ok") is True, f"Scenario 1 failed: {res1}"
         assert res1.get("status") == "reviewed", f"Expected status='reviewed', got {res1}"
@@ -211,7 +211,7 @@ def main() -> int:
         print("[Scenario 4] Verified: line 6 kept inline, line 999 downgraded into top-level body.")
         print("ALL 4 SCENARIOS PASSED.")
         return 0
-    finally:
+    finally: #不管成功与失败都要吧服务器关掉
         server.shutdown()
         server.server_close()
 
